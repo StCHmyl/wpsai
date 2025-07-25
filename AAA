@@ -45,7 +45,7 @@ function AskAI(row) {
     var prompt = `商品：${itemName}，成本：${itemCost}，数量：${itemQty}。请给一句 20 字以内的销售建议。`;
 
     var url    = 'https://api.moonshot.cn/v1/chat/completions';
-    var apiKey = 'sk-MTBlZ5rPz2Ts6CujYzWmdssPHN5sfYbKMplNCCn0YK2CUc5y';
+    var apiKey = 'API-KEY';
 
     var payload = JSON.stringify({
         model: 'moonshot-v1-8k',
