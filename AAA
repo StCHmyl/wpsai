@@ -1,0 +1,74 @@
+/**
+ * TextEdit1 内容变化事件
+ * 作用：把用户输入的“商品名称 成本 数量”追加到当前工作表最后一行，
+ *       然后调用 Moonshot 大模型，把回答写进 D 列
+ * 注意：不清空文本框、不做类型校验
+ */
+function TextEdit1_Change() {
+    /* ---------- 1. 读取并拆分输入 ---------- */
+    var textInput = TextEdit1.Text;
+    if (!textInput || !textInput.trim()) { return; }
+
+    var data = textInput.trim().split(/\s+/);
+    if (data.length < 3) { return; }
+
+    var itemName     = data[0];
+    var itemCost     = data[1];
+    var itemQuantity = data[2];
+
+    /* ---------- 2. 追加到工作表 ---------- */
+    var sheet   = Application.ActiveSheet;
+    var lastRow = sheet.Cells(65536, 1).End(-4162).Row + 1; // -4162 = xlUp
+
+    sheet.Cells(lastRow, 1).Value2 = itemName;
+    sheet.Cells(lastRow, 2).Value2 = itemCost;
+    sheet.Cells(lastRow, 3).Value2 = itemQuantity;
+
+    /* ---------- 3. 调用大模型 ---------- */
+    AskAI(lastRow);
+}
+
+/**
+ * 把第 row 行的三列数据发给 Moonshot，将回答写入 D 列
+ * @param {number} row 行号
+ */
+/**
+ * 把当前行数据发给 Moonshot，把回答写进 D 列
+ * 兼容所有 WPS 版本
+ */
+function AskAI(row) {
+    var sheet   = Application.ActiveSheet;
+    var itemName = sheet.Cells(row, 1).Value2;
+    var itemCost = sheet.Cells(row, 2).Value2;
+    var itemQty  = sheet.Cells(row, 3).Value2;
+
+    var prompt = `商品：${itemName}，成本：${itemCost}，数量：${itemQty}。请给一句 20 字以内的销售建议。`;
+
+    var url    = 'https://api.moonshot.cn/v1/chat/completions';
+    var apiKey = 'sk-MTBlZ5rPz2Ts6CujYzWmdssPHN5sfYbKMplNCCn0YK2CUc5y';
+
+    var payload = JSON.stringify({
+        model: 'moonshot-v1-8k',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 40,
+        temperature: 0.7
+    });
+
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, false); // 同步
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
+        xhr.send(payload);
+
+        if (xhr.status !== 200) {
+            throw new Error('HTTP ' + xhr.status + ' ' + xhr.statusText);
+        }
+
+        var json  = JSON.parse(xhr.responseText);
+        var reply = json.choices[0].message.content.trim();
+        sheet.Cells(row, 4).Value2 = reply;
+    } catch (e) {
+        sheet.Cells(row, 4).Value2 = 'AI调用失败：' + e.message;
+    }
+}
