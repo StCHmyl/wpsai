@@ -1,0 +1,113 @@
+/**
+ * TextEdit1 内容变化事件
+ * 作用：读取用户输入的列号和任务内容，并根据任务类型执行相应操作
+ * 用户输入格式为 【列号 任务】
+ */
+function TextEdit1_Change() {
+    /* ---------- 1. 读取并获取目标列和任务 ---------- */
+    var textInput = TextEdit1.Text;
+    if (!textInput || !textInput.trim()) { return; }
+
+    var parts = textInput.trim().split(/\s+/);
+    if (parts.length < 2) {
+        console.log("请输入有效的列号和任务！");
+        return;
+    }
+
+    var targetColumn = parts[0];  // 获取列号（如 C）
+    var prompt = parts.slice(1).join(" ");  // 获取任务内容（prompt）
+
+    // 将列字母转换为列索引
+    var columnIndex = ColumnLetterToIndex(targetColumn);
+    if (columnIndex === -1) {
+        console.log("无效的列名: " + targetColumn);
+        return;
+    }
+
+    /* ---------- 2. 获取工作表数据 ---------- */
+    var sheet = Application.ActiveSheet;
+    var lastRow = sheet.Cells(65536, 1).End(-4162).Row; // 最后一行
+
+    /* ---------- 3. 从目标列执行任务并写入 ---------- */
+    for (var row = 2; row <= lastRow; row++) { // 从第二行开始（跳过表头）
+        var cellValue = sheet.Cells(row, columnIndex).Value2;
+        if (cellValue && cellValue.trim()) {
+            // 在控制台打印处理前的文本
+            console.log("处理前的文本（行 " + row + "）: " + cellValue.trim());
+            askAI(cellValue.trim(), prompt, row); // 调用askAI函数，并传递行号
+        }
+    }
+}
+
+/**
+ * 列字母转换为列索引
+ * @param {string} letter 列字母（例如 "C"）
+ * @return {number} 对应的列索引，1代表A列，2代表B列，以此类推
+ */
+function ColumnLetterToIndex(letter) {
+    letter = letter.trim().toUpperCase();
+    var index = 0;
+    for (var i = 0; i < letter.length; i++) {
+        index = index * 26 + letter.charCodeAt(i) - 64; // A = 1, B = 2, ..., Z = 26
+    }
+    return index;
+}
+
+/**
+ * 获取目标行最后一个非空列的列号
+ * @param {number} row 行号
+ * @return {number} 目标行最后一个非空列的列号
+ */
+function GetLastNonEmptyColumn(row) {
+    var sheet = Application.ActiveSheet;
+    var lastCol = sheet.Cells(row, sheet.Columns.Count).End(-4159).Column; // -4159 = xlToLeft
+    return lastCol;
+}
+
+/**
+ * 通用的AI任务处理函数，根据不同的prompt执行相应的任务
+ * @param {string} text 需要处理的文本
+ * @param {string} prompt 任务描述
+ * @param {number} row 当前行号，用于将处理结果写入表格
+ */
+function askAI(text, prompt, row) {
+    var sheet = Application.ActiveSheet;
+    var url = 'https://api.moonshot.cn/v1/chat/completions'; // 替换为实际的API服务地址
+    var apiKey = 'api-key';  // 替换为有效的API密钥
+
+    var payload = JSON.stringify({
+        model: 'moonshot-v1-8k',  // 使用的模型
+        messages: [{ role: 'user', content: `${prompt}: ${text}` }],
+        max_tokens: 100,
+        temperature: 0.7
+    });
+
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, false); // 同步
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
+        xhr.send(payload);
+
+        if (xhr.status !== 200) {
+            throw new Error('HTTP ' + xhr.status + ' ' + xhr.statusText);
+        }
+
+        var json = JSON.parse(xhr.responseText);
+        var reply = json.choices[0].message.content.trim();
+
+        // 在控制台输出处理后的结果
+        console.log("处理后的文本（行 " + row + "）: " + reply);
+
+        // 获取目标行最后一个非空列
+        var lastCol = GetLastNonEmptyColumn(row);
+
+        // 将结果写入该行最后一个非空列后的下一列
+        sheet.Cells(row, lastCol + 1).Value2 = reply;
+
+    } catch (e) {
+        console.log('AI调用失败：' + e.message);
+        var sheet = Application.ActiveSheet;
+        sheet.Cells(row, sheet.Cells(row, 1).End(-4159).Column + 1).Value2 = '任务失败：' + e.message;
+    }
+}
